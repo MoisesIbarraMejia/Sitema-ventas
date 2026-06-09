@@ -4,11 +4,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const pool = new pg.Pool({
-  host: 'aws-0-us-west-2.pooler.supabase.com',
-  port: 6543,
-  user: 'postgres.fibjlqgznlpptlfzuwvl',
-  password: process.env.SUPABASE_DB_PASSWORD,
-  database: 'postgres',
+  connectionString: process.env.SUPABASE_DB_URL,
   ssl: { rejectUnauthorized: false }
 });
 
