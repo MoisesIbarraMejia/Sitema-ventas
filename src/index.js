@@ -102,13 +102,6 @@ app.get('/', (req, res) => {
 // TEMPORAL - BORRAR DESPUÉS DEL SETUP
 import { crearHashPassword } from './auth.js';
 
-app.get('/generar-hash', async (req, res) => {
-  const password = req.query.p;
-  if (!password) return res.send('Falta ?p=tupassword');
-  const hash = await crearHashPassword(password);
-  res.send(`<pre>${hash}</pre>`);
-});
-
 app.listen(PORT, () => console.log(`Servidor Galvan Graph en puerto ${PORT}`));
 
 function getHTML() {
