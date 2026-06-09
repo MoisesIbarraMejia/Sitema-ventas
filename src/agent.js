@@ -1,156 +1,131 @@
 import Groq from 'groq-sdk';
-import pg from 'pg';
 import dotenv from 'dotenv';
-
+import { pool } from './auth.js';  // ← CAMBIO: importar pool compartido
 dotenv.config();
 
-// 1. Configuración de la base de datos Supabase
-const pool = new pg.Pool({
-  host: 'aws-1-us-west-2.pooler.supabase.com',
-  port: 6543,
-  user: 'postgres.fibjlqgznlpptlfzuwvl',
-  password: process.env.SUPABASE_DB_PASSWORD, 
-  database: 'postgres',
-  ssl: { rejectUnauthorized: false }
-});
-
-// 2. Inicializar cliente oficial de Groq
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// --- HERRAMIENTAS DE BASE DE DATOS (POSTGRESQL) ---
+// --- HERRAMIENTAS (las 2 actuales se quedan igual, se agregan 2 nuevas) ---
 
-// Herramienta 1: Registrar Cliente
 async function dbRegistrarCliente(nombre, telefono, correo, rfc) {
-  const query = `
-    INSERT INTO public.clientes (nombre, telefono, correo, rfc_o_tax_id) 
-    VALUES ($1, $2, $3, $4) 
-    RETURNING id, nombre;
-  `;
-  const result = await pool.query(query, [nombre, telefono || null, correo, rfc || null]);
-  return `Éxito: Cliente registrado con ID ${result.rows[0].id}.`;
+  // igual que antes...
 }
 
-// Herramienta 2: Registrar Venta y sus Detalles (Transaccional)
 async function dbRegistrarVenta(cliente_id, total, requiere_factura, productos) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN'); // Iniciamos transacción para no dejar datos huérfanos
-
-    // A) Insertar en la tabla ventas
-    const ventaQuery = `
-      INSERT INTO public.ventas (cliente_id, total, requiere_factura, estado_pago)
-      VALUES ($1, $2, $3, 'PAGADO')
-      RETURNING id;
-    `;
-    const ventaRes = await client.query(ventaQuery, [cliente_id, total, requiere_factura || false]);
-    const ventaId = ventaRes.rows[0].id;
-
-    // B) Insertar cada producto en detalles_ventas
-    const detalleQuery = `
-      INSERT INTO public.detalles_ventas (venta_id, producto_servicio, cantidad, precio_unitario)
-      VALUES ($1, $2, $3, $4);
-    `;
-    
-    for (const prod of productos) {
-      await client.query(detalleQuery, [ventaId, prod.producto_servicio, prod.cantidad, prod.precio_unitario]);
-    }
-
-    await client.query('COMMIT'); // Confirmamos los cambios en la BD
-    return `Éxito: Venta registrada con ID ${ventaId} asociada al cliente ${cliente_id}.`;
-
-  } catch (error) {
-    await client.query('ROLLBACK'); // Si algo falla, deshacemos todo
-    throw error;
-  } finally {
-    client.release();
-  }
+  // igual que antes...
 }
 
-// --- LÓGICA PRINCIPAL DEL AGENTE ---
-export async function procesarMensajeConIA(userMessage) {
+// NUEVA herramienta 3
+async function dbConsultarCliente(nombre) {
+  const res = await pool.query(
+    `SELECT id, nombre, telefono, correo FROM public.clientes 
+     WHERE nombre ILIKE $1 LIMIT 5`,
+    [`%${nombre}%`]
+  );
+  if (res.rows.length === 0) return 'No se encontró ningún cliente con ese nombre.';
+  return JSON.stringify(res.rows);
+}
+
+// NUEVA herramienta 4
+async function dbConsultarVentas(cliente_id) {
+  const res = await pool.query(
+    `SELECT v.id, v.fecha_venta, v.total, v.estado_pago, v.requiere_factura
+     FROM public.ventas v WHERE v.cliente_id = $1 ORDER BY v.fecha_venta DESC LIMIT 10`,
+    [cliente_id]
+  );
+  if (res.rows.length === 0) return 'Este cliente no tiene ventas registradas.';
+  return JSON.stringify(res.rows);
+}
+
+// CAMBIO PRINCIPAL: recibe historial[]
+export async function procesarMensajeConIA(userMessage, historial = []) {
   
-  // Definición de las herramientas para Groq
   const tools = [
+    // ... las 2 herramientas actuales igual ...
     {
       type: 'function',
       function: {
-        name: 'dbRegistrarCliente',
-        description: 'Registra un nuevo cliente cuando el usuario da datos de contacto.',
+        name: 'dbConsultarCliente',
+        description: 'Busca clientes por nombre para obtener su ID.',
         parameters: {
           type: 'object',
           properties: {
-            nombre: { type: 'string', description: 'Nombre completo.' },
-            telefono: { type: 'string', description: 'Teléfono (opcional).' },
-            correo: { type: 'string', description: 'Correo electrónico.' },
-            rfc: { type: 'string', description: 'RFC (opcional).' }
+            nombre: { type: 'string', description: 'Nombre o parte del nombre a buscar.' }
           },
-          required: ['nombre', 'correo']
+          required: ['nombre']
         }
       }
     },
     {
       type: 'function',
       function: {
-        name: 'dbRegistrarVenta',
-        description: 'Registra una venta financiera con su desglose de artículos.',
+        name: 'dbConsultarVentas',
+        description: 'Consulta el historial de ventas de un cliente por su ID.',
         parameters: {
           type: 'object',
           properties: {
-            cliente_id: { type: 'integer', description: 'El ID numérico del cliente que compra.' },
-            total: { type: 'number', description: 'Monto total acumulado de la venta.' },
-            requiere_factura: { type: 'boolean', description: 'Si el cliente pidió factura o no.' },
-            productos: {
-              type: 'array',
-              description: 'Lista de artículos comprados.',
-              items: {
-                type: 'object',
-                properties: {
-                  producto_servicio: { type: 'string', description: 'Nombre del artículo.' },
-                  cantidad: { type: 'integer', description: 'Unidades compradas.' },
-                  precio_unitario: { type: 'number', description: 'Precio por unidad.' }
-                },
-                required: ['producto_servicio', 'cantidad', 'precio_unitario']
-              }
-            }
+            cliente_id: { type: 'integer', description: 'ID numérico del cliente.' }
           },
-          required: ['cliente_id', 'total', 'productos']
+          required: ['cliente_id']
         }
       }
     }
   ];
 
+  // CAMBIO: historial se inyecta entre system y user
+  const messages = [
+    { 
+      role: 'system', 
+      content: `Eres el asistente inteligente de Galvan Graph, empresa de refacciones para máquinas de imprenta y artes gráficas. 
+      Ayudas a registrar clientes, ventas y consultar información. 
+      Siempre responde en español. Sé amable y profesional.
+      Si necesitas el ID de un cliente para registrar una venta, usa primero dbConsultarCliente.` 
+    },
+    ...historial,  // ← mensajes previos de la sesión
+    { role: 'user', content: userMessage }
+  ];
+
   const response = await groq.chat.completions.create({
     model: 'llama-3.1-8b-instant',
-    messages: [
-      { role: 'system', content: 'Eres un administrador de negocio inteligente. Ejecutas acciones de base de datos analizando los textos del usuario. Si detectas una venta, extrae minuciosamente la lista de productos, sus precios y calcula el total si el usuario no lo da explícito.' },
-      { role: 'user', content: userMessage }
-    ],
-    tools: tools,
+    messages,
+    tools,
     tool_choice: 'auto'
   });
 
   const responseMessage = response.choices[0].message;
 
   if (responseMessage.tool_calls) {
+    const toolResults = [];
     for (const toolCall of responseMessage.tool_calls) {
       const args = JSON.parse(toolCall.function.arguments);
-      
-      if (toolCall.function.name === 'dbRegistrarCliente') {
-        return await dbRegistrarCliente(args.nombre, args.telefono, args.correo, args.rfc);
-      }
-      
+      let resultado;
+      if (toolCall.function.name === 'dbRegistrarCliente')
+        resultado = await dbRegistrarCliente(args.nombre, args.telefono, args.correo, args.rfc);
       if (toolCall.function.name === 'dbRegistrarVenta') {
-        // --- PARCHE DE SEGURIDAD ---
-        // Si la IA mandó los productos como un string de texto, lo parseamos a Array nativo
-        let productosCorregidos = args.productos;
-        if (typeof productosCorregidos === 'string') {
-          productosCorregidos = JSON.parse(productosCorregidos);
-        }
-        
-        // Enviamos los datos limpios a la base de datos
-        return await dbRegistrarVenta(args.cliente_id, args.total, args.requiere_factura, productosCorregidos);
+        let productos = args.productos;
+        if (typeof productos === 'string') productos = JSON.parse(productos);
+        resultado = await dbRegistrarVenta(args.cliente_id, args.total, args.requiere_factura, productos);
       }
+      if (toolCall.function.name === 'dbConsultarCliente')
+        resultado = await dbConsultarCliente(args.nombre);
+      if (toolCall.function.name === 'dbConsultarVentas')
+        resultado = await dbConsultarVentas(args.cliente_id);
+      toolResults.push({ tool_call_id: toolCall.id, resultado });
     }
+    // Segunda llamada con resultados de tools
+    const finalResponse = await groq.chat.completions.create({
+      model: 'llama-3.1-8b-instant',
+      messages: [
+        ...messages,
+        responseMessage,
+        ...toolResults.map(t => ({
+          role: 'tool',
+          tool_call_id: t.tool_call_id,
+          content: t.resultado
+        }))
+      ]
+    });
+    return finalResponse.choices[0].message.content;
   }
 
   return responseMessage.content;

@@ -1,5 +1,5 @@
 {
-  "name": "sistema-clientes-ia",
+  "name": "galvan-graph-ia",
   "version": "1.0.0",
   "type": "module",
   "main": "src/index.js",
@@ -8,11 +8,11 @@
     "dev": "node --watch src/index.js"
   },
   "dependencies": {
+    "bcrypt": "^5.1.1",
+    "cookie-parser": "^1.4.6",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "groq-sdk": "^0.3.3",
-    "pg": "^8.11.5",
-    "qrcode": "^1.5.3",
-    "whatsapp-web.js": "^1.26.0"
+    "pg": "^8.11.5"
   }
 }
