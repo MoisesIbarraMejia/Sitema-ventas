@@ -4,6 +4,14 @@ import dotenv from 'dotenv';
 import { procesarMensajeConIA } from './agent.js';
 import { verificarUsuario } from './auth.js';
 
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+app.use(express.static(path.join(__dirname, 'public')));
+
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 7860;
@@ -99,8 +107,6 @@ app.get('/', (req, res) => {
   res.send(getHTML());
 });
 
-// TEMPORAL - BORRAR DESPUÉS DEL SETUP
-import { crearHashPassword } from './auth.js';
 
 app.listen(PORT, () => console.log(`Servidor Galvan Graph en puerto ${PORT}`));
 
@@ -189,13 +195,20 @@ function getHTML() {
     .btn-send:disabled { opacity: 0.5; cursor: default; }
 
     #login-screen.hidden, #chat-screen.hidden { display: none !important; }
+
+    .logo img{
+      width:120px;
+      height:auto;
+    }
   </style>
 </head>
 <body>
 
 <!-- LOGIN -->
 <div id="login-screen">
-  <div class="logo">⚙️</div>
+  <div class="logo">
+    <img src="/logo.svg" alt="Galvan Graph">
+  </div>
   <div class="brand">Galvan Graph</div>
   <div class="brand-sub">Sistema de control con IA</div>
   <div class="login-card">

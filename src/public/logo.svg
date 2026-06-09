@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7df9ff"/>
+      <stop offset="100%" stop-color="#00c8ff"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="256" cy="256" r="220" fill="#08121d"/>
+  <circle cx="256" cy="256" r="200" fill="none" stroke="url(#g)" stroke-width="14"/>
+
+  <g fill="none" stroke="url(#g)" stroke-width="18">
+    <circle cx="256" cy="256" r="120"/>
+  </g>
+
+  <g fill="url(#g)">
+    <circle cx="190" cy="240" r="45"/>
+    <circle cx="320" cy="230" r="55"/>
+    <circle cx="255" cy="320" r="38"/>
+  </g>
+
+  <text x="256" y="270" text-anchor="middle" font-family="Arial, sans-serif" font-size="42" font-weight="bold" fill="#dffcff">
+    Galvan Graph
+  </text>
+</svg>
