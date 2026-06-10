@@ -87,7 +87,7 @@ export async function dbRegistrarVenta(cliente_id, total, requiere_factura, prod
     await client.query('COMMIT');
 
     const clienteNombre = clienteCheck.rows[0].nombre;
-    const facturaMsg = requiere_factura ? ' | 🧾 Factura pendiente de emisión.' : '';
+    const facturaMsg = requiere_factura ? ' |  Factura pendiente de emisión.' : '';
     return `Venta #${ventaId} registrada para ${clienteNombre} por $${total}.${facturaMsg}`;
 
   } catch (error) {
@@ -288,6 +288,36 @@ export async function dbVentasDelMes() {
     mes: new Date().toLocaleString('es-MX', { month: 'long', year: 'numeric' }),
     cantidad_ventas: res.rows.length,
     total_mes: total.toFixed(2),
+    ventas: res.rows
+  });
+}
+
+/**
+ * Lista ventas que requieren factura y aún no tienen PDF adjunto.
+ * [CFDI] Base para seguimiento de comprobantes pendientes de emisión.
+ */
+export async function dbFacturasPendientes() {
+  const res = await pool.query(
+    `SELECT
+       v.id AS venta_id,
+       c.nombre AS cliente,
+       c.correo,
+       c.rfc_o_tax_id AS rfc,
+       v.fecha_venta,
+       v.total,
+       v.estado_factura,
+       EXTRACT(DAY FROM NOW() - v.fecha_venta)::int AS dias_pendiente
+     FROM public.ventas v
+     JOIN public.clientes c ON c.id = v.cliente_id
+     WHERE v.requiere_factura = true
+       AND (v.link_factures_pdf IS NULL OR v.link_factures_pdf = '')
+     ORDER BY v.fecha_venta ASC`
+  );
+  if (res.rows.length === 0) {
+    return 'No hay facturas pendientes. Todo al corriente.';
+  }
+  return JSON.stringify({
+    total_pendientes: res.rows.length,
     ventas: res.rows
   });
 }

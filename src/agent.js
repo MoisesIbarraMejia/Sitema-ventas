@@ -15,7 +15,8 @@ import {
   dbResumenVentas,
   dbVentasPorServicio,
   dbTopClientes,
-  dbVentasDelMes
+  dbVentasDelMes,
+  dbFacturasPendientes 
 } from './tools.js';
 
 dotenv.config();
@@ -158,7 +159,15 @@ const TOOLS = [
       description: 'Muestra todas las ventas del mes actual con total acumulado.',
       parameters: { type: 'object', properties: {}, required: [] }
     }
-  }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'dbFacturasPendientes',
+      description: 'Muestra todas las ventas que requieren factura pero aún no tienen PDF. Úsala cuando pregunten por facturas pendientes, qué falta facturar, o clientes que pidieron factura.',
+      parameters: { type: 'object', properties: {}, required: [] }
+    }
+  },
 ];
 
 // ─────────────────────────────────────────────
@@ -178,7 +187,10 @@ REGLAS ESTRICTAS:
 8. Cuando muestres resultados de consultas, formatea la información de manera legible con emojis de soporte visual.
 9. Si el usuario da un nombre de cliente para una venta, busca primero con dbBuscarCliente y confirma con el usuario antes de registrar si hay múltiples resultados.
 10. NUNCA ejecutes operaciones de modificación o borrado fuera de las herramientas disponibles.
-11. Si el usuario pregunta sobre facturas, CFDI, timbrado, cancelación de facturas o cualquier tema de facturación electrónica, responde EXACTAMENTE esto: "Por el momento el módulo de facturación no está disponible. Sin embargo el sistema ya registra si una venta requiere factura para cuando esté listo. Para facturas urgentes, puedes generarlas manualmente en factura.sat.gob.mx de forma gratuita." No ofrezcas alternativas adicionales ni intentes ejecutar ninguna herramienta relacionada.`;
+11. DISTINCIÓN IMPORTANTE sobre facturas:
+   - Si preguntan por EMITIR, TIMBRAR, CANCELAR o GENERAR facturas/CFDI → responde: "Por el momento el módulo de emisión de facturas no está disponible. Para facturas urgentes usa factura.sat.gob.mx de forma gratuita."
+   - Si preguntan por CONSULTAR facturas pendientes, qué falta facturar, o quién pidió factura → USA la herramienta dbFacturasPendientes. Esto SÍ está disponible.
+   - Si preguntan por SUBIR o GUARDAR un PDF/XML de factura ya emitida → indica que próximamente estará disponible.`;
 
 // ─────────────────────────────────────────────
 // DISPATCHER DE HERRAMIENTAS
@@ -199,6 +211,7 @@ async function ejecutarHerramienta(nombre, args) {
     dbResumenVentas:         () => dbResumenVentas(),
     dbVentasPorServicio:     () => dbVentasPorServicio(args.servicio),
     dbTopClientes:           () => dbTopClientes(args.limit),
+    dbFacturasPendientes:    () => dbFacturasPendientes(),
     dbVentasDelMes:          () => dbVentasDelMes()
   };
 
@@ -219,13 +232,24 @@ export async function procesarMensajeConIA(userMessage, historial = []) {
     { role: 'user', content: userMessage }
   ];
 
+  // Detectar si la pregunta es sobre facturas pendientes y forzar la herramienta
+  const mensajeLower = userMessage.toLowerCase();
+  const esPreguntaFacturas = 
+    mensajeLower.includes('factura') || 
+    mensajeLower.includes('pendiente') ||
+    mensajeLower.includes('falta facturar');
+
+  const toolChoiceConfig = esPreguntaFacturas 
+    ? { type: 'function', function: { name: 'dbFacturasPendientes' } }
+    : 'auto';
+
   // Primera llamada al LLM
   const response = await groq.chat.completions.create({
     model: 'llama-3.3-70b-versatile', // Mejor razonamiento para function calling
     messages,
     tools: TOOLS,
-    tool_choice: 'auto',
-    temperature: 0.2  // Baja temperatura = más determinista en decisiones
+    tool_choice: toolChoiceConfig,
+    temperature: 0.1  // Baja temperatura = más determinista en decisiones
   });
 
   const responseMessage = response.choices[0].message;
@@ -245,9 +269,9 @@ export async function procesarMensajeConIA(userMessage, historial = []) {
     try {
       resultado = await ejecutarHerramienta(toolCall.function.name, args);
     } catch (err) {
-      resultado = `Error al ejecutar ${toolCall.function.name}: ${err.message}`;
+      console.error(`[Tool Error] ${toolCall.function.name}:`, err); // ← agregar
+      resultado = `❌ Error al ejecutar ${toolCall.function.name}: ${err.message}`;
     }
-
     toolResultMessages.push({
       role: 'tool',
       tool_call_id: toolCall.id,
