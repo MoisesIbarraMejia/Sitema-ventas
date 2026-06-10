@@ -1,24 +1,33 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
-import path from 'path';
 import { fileURLToPath } from 'url';
-
+import { dirname, join } from 'path';
+import multer from 'multer';
 import { procesarMensajeConIA } from './agent.js';
 import { verificarUsuario } from './auth.js';
+import { subirPDFFactura } from './storage.js';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 7860;
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-app.use(express.static(path.join(__dirname, 'public')));
-
 app.use(express.json());
 app.use(cookieParser());
+app.use(express.static(join(__dirname, 'public')));
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/pdf') cb(null, true);
+    else cb(new Error('Solo se permiten archivos PDF'));
+  }
+});
 
 // Sesiones en memoria (sin redis, gratis)
 const sesiones = new Map();
@@ -108,6 +117,46 @@ app.get('/', (req, res) => {
   res.send(getHTML());
 });
 
+// SUBIR PDF DE FACTURA
+app.post('/api/subir-pdf/:ventaId', requireAuth, upload.single('pdf'), async (req, res) => {
+  try {
+    const ventaId = parseInt(req.params.ventaId);
+    if (!req.file) return res.status(400).json({ error: 'No se recibió ningún PDF.' });
+    if (isNaN(ventaId)) return res.status(400).json({ error: 'ID de venta inválido.' });
+
+    const nombreArchivo = `factura-${Date.now()}.pdf`;
+    const resultado = await subirPDFFactura(ventaId, req.file.buffer, nombreArchivo);
+
+    res.json({
+      ok: true,
+      mensaje: `PDF subido correctamente para la venta #${ventaId} del cliente ${resultado.cliente}.`,
+      url_pdf: resultado.url_pdf
+    });
+  } catch (err) {
+    console.error('[Error subir PDF]:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint para obtener facturas pendientes (usado por el selector de PDF)
+app.get('/api/facturas-pendientes', requireAuth, async (req, res) => {
+  try {
+    const { pool } = await import('./auth.js');
+    const result = await pool.query(
+      `SELECT v.id AS venta_id, c.nombre AS cliente, v.total, v.fecha_venta,
+              EXTRACT(DAY FROM NOW() - v.fecha_venta)::int AS dias_pendiente
+       FROM public.ventas v
+       JOIN public.clientes c ON c.id = v.cliente_id
+       WHERE v.requiere_factura = true
+         AND (v.link_factures_pdf IS NULL OR v.link_factures_pdf = '')
+       ORDER BY v.fecha_venta ASC`
+    );
+    res.json(result.rows);
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 app.listen(PORT, () => console.log(`Servidor Galvan Graph en puerto ${PORT}`));
 
@@ -183,6 +232,11 @@ function getHTML() {
       padding: 12px 16px; background: var(--surface); border-top: 1px solid #2a2a4a;
       display: flex; gap: 10px; align-items: flex-end;
     }
+    .btn-attach {
+      background: var(--card); border: 1px solid #2a2a4a; border-radius: 10px;
+      padding: 10px 12px; cursor: pointer; font-size: 16px; flex-shrink: 0;
+    }
+    .btn-attach:hover { border-color: var(--accent); }
     #msg-input {
       flex: 1; background: var(--card); border: 1px solid #2a2a4a; border-radius: 10px;
       padding: 10px 14px; color: var(--text); font-size: 14px; resize: none; outline: none;
@@ -241,98 +295,14 @@ function getHTML() {
     <div class="msg bot">¡Hola! Soy el asistente de <b>Galvan Graph</b>. Puedo registrar clientes, ventas y consultar información. ¿En qué te ayudo?</div>
   </div>
   <div class="input-area">
+    <label class="btn-attach" title="Subir PDF de factura" onclick="document.getElementById('pdf-input').click()">📎</label>
+    <input type="file" id="pdf-input" accept=".pdf" style="display:none" onchange="subirPDF(event)"/>
     <textarea id="msg-input" rows="1" placeholder="Escribe un mensaje..." onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
     <button class="btn-send" id="btn-send" onclick="sendMessage()">➤</button>
   </div>
 </div>
 
-<script>
-  // Registrar PWA
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js');
-  }
-
-  let nombreUsuario = '';
-
-  async function login() {
-    const username = document.getElementById('username').value.trim();
-    const password = document.getElementById('password').value;
-    const errEl = document.getElementById('login-error');
-    errEl.textContent = '';
-    if (!username || !password) { errEl.textContent = 'Completa los campos.'; return; }
-    try {
-      const r = await fetch('/api/login', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({username, password})
-      });
-      const d = await r.json();
-      if (!r.ok) { errEl.textContent = d.error || 'Error al iniciar sesión.'; return; }
-      nombreUsuario = d.nombre || username;
-      document.getElementById('user-status').textContent = nombreUsuario;
-      document.getElementById('login-screen').style.display = 'none';
-      document.getElementById('chat-screen').style.display = 'flex';
-    } catch(e) { errEl.textContent = 'Error de conexión.'; }
-  }
-
-  async function logout() {
-    await fetch('/api/logout', {method:'POST'});
-    document.getElementById('chat-screen').style.display = 'none';
-    document.getElementById('login-screen').style.display = 'flex';
-    document.getElementById('messages').innerHTML = '<div class="msg bot">¡Hola! Soy el asistente de <b>Galvan Graph</b>. ¿En qué te ayudo?</div>';
-  }
-
-  function handleKey(e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-  }
-
-  function autoResize(el) {
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 100) + 'px';
-  }
-
-  async function sendMessage() {
-    const input = document.getElementById('msg-input');
-    const msg = input.value.trim();
-    if (!msg) return;
-    input.value = '';
-    input.style.height = 'auto';
-    addMsg(msg, 'user');
-    const btn = document.getElementById('btn-send');
-    btn.disabled = true;
-    const typing = addMsg('Escribiendo...', 'bot typing');
-    try {
-      const r = await fetch('/api/chat', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({message: msg})
-      });
-      const d = await r.json();
-      typing.remove();
-      if (r.status === 401) { logout(); return; }
-      addMsg(d.respuesta || d.error || 'Sin respuesta', 'bot');
-    } catch(e) {
-      typing.remove();
-      addMsg('Error de conexión. Intenta de nuevo.', 'bot');
-    }
-    btn.disabled = false;
-    input.focus();
-  }
-
-  function addMsg(text, cls) {
-    const div = document.createElement('div');
-    div.className = 'msg ' + cls;
-    div.innerHTML = text.replace(/\\n/g,'<br>');
-    document.getElementById('messages').appendChild(div);
-    div.scrollIntoView({behavior:'smooth'});
-    return div;
-  }
-
-  // Enter en login
-  document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('password').addEventListener('keydown', e => {
-      if (e.key === 'Enter') login();
-    });
-  });
-</script>
+<script src="/app.js"></script>
 </body>
 </html>`;
 }
