@@ -23,9 +23,10 @@ export async function subirPDFFactura(ventaId, archivoBuffer, nombreArchivo) {
   const uploadRes = await fetch(uploadUrl, {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer ' + SUPABASE_SERVICE_KEY, 
-      'Content-Type': 'application/pdf',
-      'x-upsert': 'true'
+    'apikey': SUPABASE_SERVICE_KEY,
+    'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+    'Content-Type': 'application/pdf',
+    'x-upsert': 'true'
     },
     body: archivoBuffer
   });
