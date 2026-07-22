@@ -138,24 +138,6 @@ app.post('/api/subir-pdf/:ventaId', requireAuth, upload.single('pdf'), async (re
   }
 });
 
-// Endpoint para obtener facturas pendientes (usado por el selector de PDF)
-app.get('/api/facturas-pendientes', requireAuth, async (req, res) => {
-  try {
-    const { pool } = await import('./auth.js');
-    const result = await pool.query(
-      `SELECT v.id AS venta_id, c.nombre AS cliente, v.total, v.fecha_venta,
-              EXTRACT(DAY FROM NOW() - v.fecha_venta)::int AS dias_pendiente
-       FROM public.ventas v
-       JOIN public.clientes c ON c.id = v.cliente_id
-       WHERE v.requiere_factura = true
-         AND (v.link_factures_pdf IS NULL OR v.link_factures_pdf = '')
-       ORDER BY v.fecha_venta ASC`
-    );
-    res.json(result.rows);
-  } catch(err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 
 app.listen(PORT, () => console.log(`Servidor Galvan Graph en puerto ${PORT}`));
@@ -173,81 +155,94 @@ function getHTML() {
     /* Reset y variables */
     * { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg: #0f0f1a;
-      --surface: #1a1a2e;
-      --card: #16213e;
-      --accent: #e94560;
-      --accent2: #0f3460;
-      --text: #eaeaea;
-      --text2: #a0a0b0;
-      --radius: 14px;
+      --bg: #f5f6fa;
+      --surface: #ffffff;
+      --card: #ffffff;
+      --accent: #2563eb;
+      --accent2: #dbeafe;
+      --text: #1e293b;
+      --text2: #64748b;
+      --border: #e2e8f0;
+      --radius: 12px;
     }
     body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; height: 100dvh; display: flex; flex-direction: column; }
 
     /* LOGIN */
     #login-screen {
-      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px;
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; background: var(--bg);
     }
-    .logo { font-size: 48px; margin-bottom: 8px; }
-    .brand { font-size: 22px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+    .logo { font-size: 40px; margin-bottom: 8px; }
+    .brand { font-size: 20px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
     .brand-sub { font-size: 13px; color: var(--text2); margin-bottom: 32px; }
     .login-card {
-      background: var(--card); border-radius: var(--radius); padding: 28px 24px; width: 100%; max-width: 360px;
-      box-shadow: 0 8px 32px rgba(233,69,96,0.15);
+      background: var(--surface); border-radius: var(--radius); padding: 28px 24px;
+      width: 100%; max-width: 360px; box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.06);
+      border: 1px solid var(--border);
     }
-    .login-card h2 { font-size: 18px; margin-bottom: 20px; text-align: center; }
+    .login-card h2 { font-size: 17px; margin-bottom: 20px; text-align: center; color: var(--text); font-weight: 600; }
     .field { margin-bottom: 16px; }
-    .field label { font-size: 12px; color: var(--text2); display: block; margin-bottom: 6px; }
+    .field label { font-size: 12px; color: var(--text2); display: block; margin-bottom: 6px; font-weight: 500; }
     .field input {
-      width: 100%; background: var(--surface); border: 1px solid #2a2a4a; border-radius: 8px;
-      padding: 12px 14px; color: var(--text); font-size: 15px; outline: none;
+      width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 11px 14px; color: var(--text); font-size: 15px; outline: none; box-sizing: border-box;
     }
-    .field input:focus { border-color: var(--accent); }
+    .field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
     .btn-primary {
       width: 100%; background: var(--accent); color: white; border: none; border-radius: 8px;
-      padding: 13px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 4px;
+      padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 4px;
     }
-    .btn-primary:active { opacity: 0.85; }
-    .error-msg { color: var(--accent); font-size: 13px; text-align: center; margin-top: 12px; }
+    .btn-primary:active { opacity: 0.9; }
+    .error-msg { color: #dc2626; font-size: 13px; text-align: center; margin-top: 12px; }
 
     /* CHAT */
-    #chat-screen { flex: 1; display: none; flex-direction: column; height: 100dvh; }
+    #chat-screen { flex: 1; display: none; flex-direction: column; height: 100dvh; background: var(--bg); }
     .topbar {
-      background: var(--card); padding: 12px 16px; display: flex; align-items: center; gap: 12px;
-      border-bottom: 1px solid #2a2a4a;
+      background: var(--surface); padding: 12px 16px; display: flex; align-items: center; gap: 12px;
+      border-bottom: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.04);
     }
-    .topbar-logo { font-size: 24px; }
+    .topbar-logo { font-size: 22px; }
     .topbar-info { flex: 1; }
-    .topbar-name { font-weight: 700; font-size: 15px; color: var(--accent); }
+    .topbar-name { font-weight: 700; font-size: 15px; color: var(--text); }
     .topbar-status { font-size: 11px; color: var(--text2); }
-    .btn-logout { background: none; border: 1px solid #2a2a4a; border-radius: 8px; color: var(--text2); padding: 6px 12px; font-size: 12px; cursor: pointer; }
+    .btn-logout {
+      background: none; border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text2); padding: 6px 12px; font-size: 12px; cursor: pointer;
+    }
+    .btn-logout:hover { border-color: #dc2626; color: #dc2626; }
 
-    .messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-    .msg { max-width: 85%; padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.5; word-break: break-word; }
-    .msg.user { background: var(--accent2); align-self: flex-end; border-bottom-right-radius: 4px; }
-    .msg.bot { background: var(--card); align-self: flex-start; border-bottom-left-radius: 4px; }
+    .messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+    .msg { max-width: 82%; padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.55; word-break: break-word; }
+    .msg.user {
+      background: var(--accent); color: white; align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+    .msg.bot {
+      background: var(--surface); color: var(--text); align-self: flex-start;
+      border-bottom-left-radius: 4px; border: 1px solid var(--border);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
     .msg.bot.typing { color: var(--text2); font-style: italic; }
 
     .input-area {
-      padding: 12px 16px; background: var(--surface); border-top: 1px solid #2a2a4a;
-      display: flex; gap: 10px; align-items: flex-end;
+      padding: 12px 16px; background: var(--surface); border-top: 1px solid var(--border);
+      display: flex; gap: 8px; align-items: flex-end;
     }
     .btn-attach {
-      background: var(--card); border: 1px solid #2a2a4a; border-radius: 10px;
-      padding: 10px 12px; cursor: pointer; font-size: 16px; flex-shrink: 0;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+      padding: 10px 12px; cursor: pointer; font-size: 16px; flex-shrink: 0; line-height: 1;
     }
     .btn-attach:hover { border-color: var(--accent); }
     #msg-input {
-      flex: 1; background: var(--card); border: 1px solid #2a2a4a; border-radius: 10px;
+      flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
       padding: 10px 14px; color: var(--text); font-size: 14px; resize: none; outline: none;
       max-height: 100px; font-family: inherit;
     }
-    #msg-input:focus { border-color: var(--accent); }
+    #msg-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
     .btn-send {
       background: var(--accent); border: none; border-radius: 10px; padding: 10px 14px;
-      color: white; font-size: 18px; cursor: pointer; flex-shrink: 0;
+      color: white; font-size: 16px; cursor: pointer; flex-shrink: 0; line-height: 1;
     }
-    .btn-send:disabled { opacity: 0.5; cursor: default; }
+    .btn-send:disabled { opacity: 0.4; cursor: default; }
 
     #login-screen.hidden, #chat-screen.hidden { display: none !important; }
 

@@ -9,14 +9,7 @@ import dotenv from 'dotenv';
 import {
   dbRegistrarCliente,
   dbRegistrarVenta,
-  dbBuscarCliente,
-  dbConsultarVentasCliente,
-  dbUltimasVentas,
-  dbResumenVentas,
-  dbVentasPorServicio,
-  dbTopClientes,
-  dbVentasDelMes,
-  dbFacturasPendientes 
+  dbConsulta
 } from './tools.js';
 
 dotenv.config();
@@ -36,10 +29,10 @@ const TOOLS = [
       parameters: {
         type: 'object',
         properties: {
-          nombre:   { type: 'string', description: 'Nombre completo del cliente.' },
-          telefono: { type: 'string', description: 'Teléfono (opcional).' },
-          correo:   { type: 'string', description: 'Correo electrónico (obligatorio).' },
-          rfc:      { type: 'string', description: 'RFC o Tax ID (opcional, en mayúsculas).' }
+          nombre:   { type: 'string' },
+          telefono: { type: 'string' },
+          correo:   { type: 'string' },
+          rfc:      { type: 'string' }
         },
         required: ['nombre', 'correo']
       }
@@ -49,22 +42,21 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'dbRegistrarVenta',
-      description: 'Registra una venta. Úsala SOLO cuando tengas: cliente_id numérico, lista de productos con nombre/cantidad/precio, y el total. Si falta el ID del cliente, usa primero dbBuscarCliente. Si faltan precios o cantidades, pregúntalos.',
+      description: 'Registra una venta. Úsala SOLO cuando tengas: cliente_id, productos con nombre/cantidad/precio, y total. Si no tienes el ID del cliente, usa dbConsulta para buscarlo primero.',
       parameters: {
         type: 'object',
         properties: {
-          cliente_id:       { type: 'integer', description: 'ID numérico del cliente (obtenido de dbBuscarCliente).' },
-          total:            { type: 'number',  description: 'Monto total de la venta.' },
-          requiere_factura: { type: 'boolean', description: 'true si el cliente pidió factura.' },
+          cliente_id:       { type: 'integer' },
+          total:            { type: 'number' },
+          requiere_factura: { type: 'boolean' },
           productos: {
             type: 'array',
-            description: 'Lista de productos/servicios vendidos.',
             items: {
               type: 'object',
               properties: {
-                producto_servicio: { type: 'string',  description: 'Nombre del producto o servicio.' },
-                cantidad:          { type: 'integer', description: 'Unidades vendidas.' },
-                precio_unitario:   { type: 'number',  description: 'Precio por unidad.' }
+                producto_servicio: { type: 'string' },
+                cantidad:          { type: 'integer' },
+                precio_unitario:   { type: 'number' }
               },
               required: ['producto_servicio', 'cantidad', 'precio_unitario']
             }
@@ -77,97 +69,17 @@ const TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'dbBuscarCliente',
-      description: 'Busca clientes por nombre. Úsala antes de registrar una venta si no tienes el ID, o cuando el usuario pregunte por un cliente.',
+      name: 'dbConsulta',
+      description: 'Ejecuta SQL sobre la base de datos. Para SELECT úsala directamente. Para INSERT/UPDATE/DELETE presenta primero al usuario un resumen en lenguaje natural y espera doble confirmación antes de ejecutar.',
       parameters: {
         type: 'object',
         properties: {
-          nombre: { type: 'string', description: 'Nombre o parte del nombre a buscar.' }
+          sql: { type: 'string' }
         },
-        required: ['nombre']
+        required: ['sql']
       }
     }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'dbConsultarVentasCliente',
-      description: 'Muestra el historial de ventas de un cliente específico usando su ID.',
-      parameters: {
-        type: 'object',
-        properties: {
-          cliente_id: { type: 'integer', description: 'ID numérico del cliente.' }
-        },
-        required: ['cliente_id']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'dbUltimasVentas',
-      description: 'Lista las últimas N ventas registradas. Usa cuando el usuario pida "últimas ventas", "ventas recientes" o similar.',
-      parameters: {
-        type: 'object',
-        properties: {
-          limit: { type: 'integer', description: 'Cuántas ventas mostrar (máx 50, default 5).' }
-        },
-        required: []
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'dbResumenVentas',
-      description: 'Resumen financiero general: total de ventas, monto acumulado, ticket promedio y facturas pendientes.',
-      parameters: { type: 'object', properties: {}, required: [] }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'dbVentasPorServicio',
-      description: 'Busca ventas que incluyan un producto o servicio específico. Usa cuando pregunten "¿quién compró X?" o "¿cuánto se ha vendido de X?".',
-      parameters: {
-        type: 'object',
-        properties: {
-          servicio: { type: 'string', description: 'Nombre o parte del nombre del producto/servicio.' }
-        },
-        required: ['servicio']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'dbTopClientes',
-      description: 'Lista los N mejores clientes por monto total de compras.',
-      parameters: {
-        type: 'object',
-        properties: {
-          limit: { type: 'integer', description: 'Cuántos clientes mostrar (máx 20, default 5).' }
-        },
-        required: []
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'dbVentasDelMes',
-      description: 'Muestra todas las ventas del mes actual con total acumulado.',
-      parameters: { type: 'object', properties: {}, required: [] }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'dbFacturasPendientes',
-      description: 'Muestra todas las ventas que requieren factura pero aún no tienen PDF. Úsala cuando pregunten por facturas pendientes, qué falta facturar, o clientes que pidieron factura.',
-      parameters: { type: 'object', properties: {}, required: [] }
-    }
-  },
+  }
 ];
 
 // ─────────────────────────────────────────────
@@ -176,47 +88,66 @@ const TOOLS = [
 
 const SYSTEM_PROMPT = `Eres el asistente de gestión empresarial de Galvan Graph, empresa distribuidora de refacciones para máquinas de imprenta y artes gráficas.
 
-REGLAS ESTRICTAS:
-1. SIEMPRE usa herramientas cuando la información esté en la base de datos. NUNCA respondas "no tengo acceso" si existe una herramienta disponible.
-2. Para registrar una venta: si no tienes el ID del cliente, usa primero dbBuscarCliente. Nunca inventes un ID.
-3. Para registrar clientes o ventas: si faltan datos obligatorios (correo para cliente / precio o cantidad para venta), PREGUNTA antes de llamar la herramienta. Nunca inventes datos.
-4. Corrige errores ortográficos obvios en nombres de productos o clientes antes de buscar.
-5. Interpreta números en palabras: "cinco", "diez", "cincuenta" → 5, 10, 50.
-6. Normaliza nombres similares: "análisis espacial" y "Análisis Espacial" son el mismo servicio.
-7. Responde siempre en español, de forma clara y profesional.
-8. Cuando muestres resultados de consultas, formatea la información de manera legible con emojis de soporte visual.
-9. Si el usuario da un nombre de cliente para una venta, busca primero con dbBuscarCliente y confirma con el usuario antes de registrar si hay múltiples resultados.
-10. NUNCA ejecutes operaciones de modificación o borrado fuera de las herramientas disponibles.
-11. DISTINCIÓN IMPORTANTE sobre facturas:
-   - Si preguntan por EMITIR, TIMBRAR, CANCELAR o GENERAR facturas/CFDI → responde: "Por el momento el módulo de emisión de facturas no está disponible. Para facturas urgentes usa factura.sat.gob.mx de forma gratuita."
-   - Si preguntan por CONSULTAR facturas pendientes, qué falta facturar, o quién pidió factura → USA la herramienta dbFacturasPendientes. Esto SÍ está disponible.
-   - Si preguntan por SUBIR o GUARDAR un PDF/XML de factura ya emitida → indica que próximamente estará disponible.`;
+ESTRUCTURA DE BASE DE DATOS:
 
+tabla: public.clientes
+  id, nombre, telefono, correo, rfc_o_tax_id, fecha_registro, razon_social,
+  regimen_fiscal, uso_cfdi, codigo_postal, pais (default México), email_facturacion
+
+tabla: public.ventas
+  id, cliente_id (FK→clientes.id), fecha_venta, total, estado_pago (PAGADO|PENDIENTE|CANCELADO),
+  requiere_factura (boolean), estado_factura (PENDIENTE|EMITIDA|CANCELADA), link_factures_pdf
+
+tabla: public.detalles_ventas
+  id, venta_id (FK→ventas.id), producto_servicio, cantidad, precio_unitario, subtotal
+
+tabla: public.usuarios
+  id, username, password_hash, nombre_completo, activo, fecha_creacion
+
+REGLAS ESTRICTAS:
+
+1. NUNCA muestres el SQL al usuario en ningún caso. Ni en respuestas, ni al pedir confirmación. Solo habla en lenguaje natural.
+
+2. CONSULTAS SELECT: ejecuta dbConsulta directamente sin pedir permiso. Muestra los resultados de forma clara y legible.
+
+3. ESCRITURAS (INSERT/UPDATE/DELETE via dbConsulta):
+   - Paso 1: Describe en lenguaje natural exactamente qué vas a modificar y pide confirmación. Ejemplo: "Voy a marcar la venta #3 de Carlos Mendoza como CANCELADA. ¿Confirmas?"
+   - Paso 2: Si el usuario confirma con sí/si/confirmar/ok, di: "Esta acción es irreversible. Escribe CONFIRMAR para proceder."
+   - Paso 3: Solo ejecuta si el usuario escribe exactamente CONFIRMAR.
+   - Si el usuario escribe algo diferente, cancela y avisa.
+
+4. REGISTRO de clientes y ventas: usa dbRegistrarCliente y dbRegistrarVenta. Nunca uses dbConsulta para insertar clientes o ventas nuevas.
+
+5. BLOQUEADO PERMANENTEMENTE: DROP, TRUNCATE, ALTER, CREATE, GRANT, REVOKE. Nunca los uses.
+
+6. Si faltan datos obligatorios, pregunta antes de ejecutar cualquier herramienta.
+
+7. Corrige errores ortográficos obvios. Interpreta números escritos con palabras.
+
+8. Responde siempre en español, de forma clara y profesional.
+
+9. Cuando muestres resultados, formatea la información de manera legible. Usa listas o tablas de texto cuando sean más de 3 registros.
+
+10. Facturas:
+    - EMITIR/TIMBRAR/CANCELAR CFDI → "módulo no disponible, usa factura.sat.gob.mx"
+    - CONSULTAR pendientes → usa dbConsulta con SELECT
+    - SUBIR PDF → indica que use el botón 📎 en el chat`;
+    
 // ─────────────────────────────────────────────
 // DISPATCHER DE HERRAMIENTAS
 // ─────────────────────────────────────────────
 
 async function ejecutarHerramienta(nombre, args) {
-  // Normalizar productos si vienen como string (bug conocido de algunos LLMs)
   if (args.productos && typeof args.productos === 'string') {
     args.productos = JSON.parse(args.productos);
   }
-
   const mapa = {
-    dbRegistrarCliente:      () => dbRegistrarCliente(args.nombre, args.telefono, args.correo, args.rfc),
-    dbRegistrarVenta:        () => dbRegistrarVenta(args.cliente_id, args.total, args.requiere_factura, args.productos),
-    dbBuscarCliente:         () => dbBuscarCliente(args.nombre),
-    dbConsultarVentasCliente:() => dbConsultarVentasCliente(args.cliente_id),
-    dbUltimasVentas:         () => dbUltimasVentas(args.limit),
-    dbResumenVentas:         () => dbResumenVentas(),
-    dbVentasPorServicio:     () => dbVentasPorServicio(args.servicio),
-    dbTopClientes:           () => dbTopClientes(args.limit),
-    dbFacturasPendientes:    () => dbFacturasPendientes(),
-    dbVentasDelMes:          () => dbVentasDelMes()
+    dbRegistrarCliente: () => dbRegistrarCliente(args.nombre, args.telefono, args.correo, args.rfc),
+    dbRegistrarVenta:   () => dbRegistrarVenta(args.cliente_id, args.total, args.requiere_factura, args.productos),
+    dbConsulta:         () => dbConsulta(args.sql)
   };
-
   const fn = mapa[nombre];
-  if (!fn) throw new Error(`Herramienta desconocida: ${nombre}`);
+  if (!fn) throw new Error('Herramienta desconocida: ' + nombre);
   return await fn();
 }
 
